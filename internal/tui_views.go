@@ -2,17 +2,12 @@ package internal
 
 import (
 	"fmt"
+	"math"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
-
-func tabWidth(total int) int {
-	if total > 0 {
-		return total
-	}
-	return 70
-}
 
 func (m model) View() string {
 	if m.quitting {
@@ -21,22 +16,25 @@ func (m model) View() string {
 
 	var b strings.Builder
 
-	b.WriteString(m.headerView())
-	b.WriteString("\n")
-	b.WriteString(m.tabView())
-	b.WriteString("\n")
-	b.WriteString(m.renderDivider())
+	b.WriteString(m.bannerView())
 	b.WriteString("\n")
 
-	switch m.activeTab {
-	case tabDashboard:
-		b.WriteString(m.dashboardView())
-	case tabRules:
-		b.WriteString(m.rulesView())
-	case tabStats:
-		b.WriteString(m.statsView())
-	case tabHistory:
-		b.WriteString(m.historyView())
+	if m.width >= 110 {
+		b.WriteString(m.wideLayout())
+	} else {
+		b.WriteString(m.tabView())
+		b.WriteString("\n")
+		b.WriteString(m.renderDivider())
+		b.WriteString("\n")
+
+		switch m.activeTab {
+		case tabDashboard:
+			b.WriteString(m.dashboardView())
+		case tabRules:
+			b.WriteString(m.rulesView())
+		case tabHistory:
+			b.WriteString(m.historyView())
+		}
 	}
 
 	b.WriteString("\n")
@@ -48,46 +46,208 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
+	if m.showPalette {
+		b.WriteString(m.paletteView())
+		b.WriteString("\n")
+	}
+
 	b.WriteString(m.inputView())
 
 	return b.String()
 }
 
-func (m model) headerView() string {
-	status := styleSuccess.Render("🟢 ACTIVO")
-	if m.paused {
-		status = styleWarning.Render("⏸️ PAUSADO")
+func (m model) paletteView() string {
+	filtered := m.filteredPalette()
+	if len(filtered) == 0 {
+		return ""
 	}
 
-	mode := styleSuccess.Render("Normal")
-	if m.dryRun {
-		mode = styleWarning.Render("Dry-run")
-	}
-	if m.autoDetect {
-		mode = styleWarning.Render("Auto")
+	boxW := m.fullWidth - 2
+	if boxW > 60 {
+		boxW = 60
 	}
 
-	rulesCount := len(ListRulesMap())
-	replacesCount := m.metrics.GetTotalHits()
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" %s Commands %s\n", styleValue.Render(""), styleValue.Render("")))
+	sb.WriteString(styleDim.Render(strings.Repeat("\u2500", boxW)))
+	sb.WriteString("\n")
 
-	return fmt.Sprintf("  🛡️ Clipboard Monitor %s  |  %s  |  %s  |  📋 %d reglas  |  🔄 %d reemplazos",
-		Version, status, mode, rulesCount, replacesCount)
+	for i, cmd := range filtered {
+		prefix := "  "
+		if i == m.paletteCursor {
+			prefix = styleSuccess.Render("\u25B8 ")
+		}
+		line := fmt.Sprintf("%s%-10s %s", prefix, cmd.name, cmd.description)
+		if len(line) > boxW {
+			line = line[:boxW-3] + "..."
+		}
+		if i == m.paletteCursor {
+			sb.WriteString(styleSuccess.Render(line))
+		} else {
+			sb.WriteString(line)
+		}
+		sb.WriteString("\n")
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Width(boxW + 2).
+		Render(sb.String())
+}
+
+func (m model) bannerView() string {
+	data, err := os.ReadFile("assets/banner.txt")
+	banner := ""
+	if err == nil {
+		banner = strings.TrimRight(string(data), "\n")
+	}
+
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("92")).
+		Render(banner)
+}
+
+func (m model) wideLayout() string {
+	totalW := m.fullWidth - 2
+	leftW := int(math.Round(float64(totalW) * 0.55))
+	rightW := totalW - leftW
+
+	left := m.wideStatsPanel(leftW)
+	right := m.wideRulesPanel(rightW)
+
+	return "  " + lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+}
+
+func (m model) wideStatsPanel(w int) string {
+	totalHits := m.metrics.GetTotalHits()
+	ruleHits := m.metrics.GetRuleHits()
+
+	box := lipgloss.NewStyle().Width(w)
+
+	var sb strings.Builder
+
+	sb.WriteString(styleValue.Render("  \U0001F4CA Stats"))
+	sb.WriteString("\n")
+	sb.WriteString("  " + styleDim.Render(strings.Repeat("\u2500", w-4)))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("  Replacements: %s\n", styleValue.Render(fmt.Sprintf("%d", totalHits))))
+	sb.WriteString(fmt.Sprintf("  Active Rules: %s\n", styleValue.Render(fmt.Sprintf("%d", len(ListRulesMap())))))
+	sb.WriteString(fmt.Sprintf("  History:      %s\n", styleValue.Render(fmt.Sprintf("%d", len(m.history.Events())))))
+
+	if totalHits > 0 {
+		sb.WriteString(fmt.Sprintf("\n  %s Top rules:\n", styleValue.Render("\U0001F4CA")))
+		count := 0
+		for rule, hits := range ruleHits {
+			if count >= 4 {
+				break
+			}
+			sb.WriteString(fmt.Sprintf("    \u2022 %s", rule))
+			sb.WriteString(styleDim.Render(fmt.Sprintf(" (%dx)", hits)))
+			sb.WriteString("\n")
+			count++
+		}
+	}
+
+	events := m.history.Events()
+	if len(events) > 0 {
+		sb.WriteString(fmt.Sprintf("\n  %s Recent Activity\n", styleValue.Render("\U0001F50F")))
+		start := len(events) - 4
+		if start < 0 {
+			start = 0
+		}
+		for i := start; i < len(events); i++ {
+			evt := events[i]
+			ts := evt.Timestamp.Format("15:04:05")
+			rules := strings.Join(evt.TriggeredRules, ", ")
+			sb.WriteString(fmt.Sprintf("  %s  %s\n", styleDim.Render(ts), styleSuccess.Render(rules)))
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("\n  %s Recent Activity\n", styleValue.Render("\U0001F50F")))
+		sb.WriteString(fmt.Sprintf("  %s No activity yet\n", styleDim.Render("\U0001F50D")))
+	}
+
+	return box.Render(sb.String())
+}
+
+func (m model) wideRulesPanel(w int) string {
+	rules := ListRulesMap()
+
+	box := lipgloss.NewStyle().Width(w)
+
+	var sb strings.Builder
+
+	sb.WriteString(styleValue.Render("  \U0001F4CB Active Rules"))
+	sb.WriteString("\n")
+	sb.WriteString("  " + styleDim.Render(strings.Repeat("\u2500", w-4)))
+	sb.WriteString("\n")
+
+	if len(rules) == 0 {
+		sb.WriteString(fmt.Sprintf("  %s No rules defined.\n", styleDim.Render("\U0001F4ED")))
+		sb.WriteString(fmt.Sprintf("  %s add \"buscar\" \"reemplazo\"\n", styleDim.Render("\U0001F4A1")))
+	} else {
+		displayed := 0
+		for search, rule := range rules {
+			if displayed >= 12 {
+				sb.WriteString(fmt.Sprintf("\n  %s ...", styleDim.Render("")))
+				break
+			}
+			icon := "\U0001F7E2"
+			if !rule.Enabled {
+				icon = "\U0001F534"
+			}
+			s := search
+			if len(s) > w-14 {
+				s = s[:w-17] + "..."
+			}
+			r := rule.Replace
+			if len(r) > w-10 {
+				r = r[:w-13] + "..."
+			}
+			suffix := ""
+			if rule.Regex {
+				suffix = " [regex]"
+			}
+			line := fmt.Sprintf("  %s %s%s", icon, s, suffix)
+			if rule.Enabled {
+				sb.WriteString(styleSuccess.Render(line))
+			} else {
+				sb.WriteString(styleDim.Render(line))
+			}
+			sb.WriteString(fmt.Sprintf("\n     \u2192 %s\n", styleDim.Render(r)))
+			displayed++
+		}
+
+		if len(rules) > 12 {
+			sb.WriteString(fmt.Sprintf("\n  %s %d more...\n", styleDim.Render(""), len(rules)-12))
+		}
+	}
+
+	return box.Render(sb.String())
 }
 
 func (m model) tabView() string {
-	var b strings.Builder
-	b.WriteString("  ")
+	active := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("0")).
+		Background(lipgloss.Color("92")).
+		Padding(0, 3)
+
+	inactive := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("250")).
+		Padding(0, 3)
+
+	var tabs []string
 	for i, name := range tabNames {
+		label := fmt.Sprintf("[%d] %s", i+1, name)
 		if tab(i) == m.activeTab {
-			b.WriteString(styleTabActive.Render(name))
+			tabs = append(tabs, active.Render(label))
 		} else {
-			b.WriteString(styleTabInactive.Render(name))
-		}
-		if i < len(tabNames)-1 {
-			b.WriteString("  ")
+			tabs = append(tabs, inactive.Render(label))
 		}
 	}
-	return b.String()
+
+	return "  " + lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
 func (m model) renderDivider() string {
@@ -95,7 +255,7 @@ func (m model) renderDivider() string {
 	if width < 40 {
 		width = 40
 	}
-	return "  " + styleDim.Render(strings.Repeat("─", width-2))
+	return "  " + styleDim.Render(strings.Repeat("\u2500", width-2))
 }
 
 func (m model) dashboardView() string {
@@ -115,9 +275,9 @@ func (m model) dashboardView() string {
 		Width(boxW)
 
 	stats := []string{
-		boxStyle.Render(fmt.Sprintf("🔄 Reemplazos\n   %s", styleValue.Render(fmt.Sprintf("%d", totalHits)))),
-		boxStyle.Render(fmt.Sprintf("📋 Reglas activas\n   %s", styleValue.Render(fmt.Sprintf("%d", len(ListRulesMap()))))),
-		boxStyle.Render(fmt.Sprintf("📜 Historial\n   %s", styleValue.Render(fmt.Sprintf("%d", len(m.history.Events()))))),
+		boxStyle.Render(fmt.Sprintf("Reemplazos\n  %s", styleValue.Render(fmt.Sprintf("%d", totalHits)))),
+		boxStyle.Render(fmt.Sprintf("Reglas activas\n  %s", styleValue.Render(fmt.Sprintf("%d", len(ListRulesMap()))))),
+		boxStyle.Render(fmt.Sprintf("Historial\n  %s", styleValue.Render(fmt.Sprintf("%d", len(m.history.Events()))))),
 	}
 
 	b.WriteString("  ")
@@ -125,23 +285,22 @@ func (m model) dashboardView() string {
 	b.WriteString("\n\n")
 
 	if totalHits > 0 {
-		b.WriteString(fmt.Sprintf("  %sTop reglas activadas:%s\n", styleValue.Render("📊"), styleDim.Render("")))
-		b.WriteString("  ")
+		b.WriteString(fmt.Sprintf("  %s Top reglas activadas:\n", styleValue.Render("\U0001F4CA")))
 		count := 0
 		for rule, hits := range ruleHits {
 			if count >= 5 {
 				break
 			}
-			b.WriteString(styleSuccess.Render(fmt.Sprintf("  • %s", rule)))
+			b.WriteString(styleSuccess.Render(fmt.Sprintf("    \u2022 %s", rule)))
 			b.WriteString(styleDim.Render(fmt.Sprintf(" (%dx)", hits)))
+			b.WriteString("\n")
 			count++
 		}
-		b.WriteString("\n")
 	}
 
 	events := m.history.Events()
 	if len(events) > 0 {
-		b.WriteString(fmt.Sprintf("\n  %sÚltimas detecciones:%s\n", styleValue.Render("🔒"), styleDim.Render("")))
+		b.WriteString(fmt.Sprintf("\n  %s \u00DAltimas detecciones:\n", styleValue.Render("\U0001F512")))
 		start := len(events) - 3
 		if start < 0 {
 			start = 0
@@ -154,7 +313,7 @@ func (m model) dashboardView() string {
 			b.WriteString(styleSuccess.Render(fmt.Sprintf(" %s\n", rules)))
 		}
 	} else {
-		b.WriteString(fmt.Sprintf("\n  %sEsperando detecciones...%s\n", styleDim.Render("🔍"), styleDim.Render("")))
+		b.WriteString(fmt.Sprintf("\n  %s Esperando detecciones...\n", styleDim.Render("\U0001F50D")))
 	}
 
 	return b.String()
@@ -165,13 +324,13 @@ func (m model) rulesView() string {
 	var b strings.Builder
 
 	if len(rules) == 0 {
-		b.WriteString(fmt.Sprintf("  %sNo hay reglas definidas.%s\n", styleDim.Render("📭"), styleDim.Render("")))
-		b.WriteString(fmt.Sprintf("  %sUsa: add \"buscar\" \"reemplazo\"%s\n", styleDim.Render("💡"), styleDim.Render("")))
+		b.WriteString(fmt.Sprintf("  %s No hay reglas definidas.\n", styleDim.Render("\U0001F4ED")))
+		b.WriteString(fmt.Sprintf("  %s add \"buscar\" \"reemplazo\"\n", styleDim.Render("\U0001F4A1")))
 		return b.String()
 	}
 
-	b.WriteString(fmt.Sprintf("  %-30s %s %s\n", styleValue.Render("Buscar"), styleValue.Render("Reemplazar"), styleDim.Render("")))
-	b.WriteString("  " + styleDim.Render(strings.Repeat("─", m.fullWidth-6)) + "\n")
+	b.WriteString(styleValue.Render(fmt.Sprintf("  %-30s %s\n", "Buscar", "Reemplazar")))
+	b.WriteString("  " + styleDim.Render(strings.Repeat("\u2500", m.fullWidth-6)) + "\n")
 
 	keys := make([]string, 0, len(rules))
 	for k := range rules {
@@ -180,9 +339,9 @@ func (m model) rulesView() string {
 
 	for idx, k := range keys {
 		r := rules[k]
-		icon := "🟢"
+		icon := "\U0001F7E2"
 		if !r.Enabled {
-			icon = "🔴"
+			icon = "\U0001F534"
 		}
 
 		suffix := ""
@@ -192,7 +351,7 @@ func (m model) rulesView() string {
 
 		cursor := "  "
 		if idx == m.ruleCursor {
-			cursor = styleSuccess.Render("▸ ")
+			cursor = styleSuccess.Render("\u25B8 ")
 		}
 
 		search := k
@@ -205,8 +364,8 @@ func (m model) rulesView() string {
 			replace = replace[:25] + "..."
 		}
 
-		line := fmt.Sprintf("%s%s %-28s %s %s%s",
-			cursor, icon, search, "→", replace, suffix)
+		line := fmt.Sprintf("%s%s %-28s \u2192 %s%s",
+			cursor, icon, search, replace, suffix)
 
 		if idx == m.ruleCursor {
 			b.WriteString(styleSuccess.Render(line))
@@ -218,44 +377,8 @@ func (m model) rulesView() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("\n  %s[↑/↓] Navegar  [Enter] Toggle  [d] Eliminar%s\n",
-		styleDim.Render(""), styleDim.Render("")))
-	b.WriteString(fmt.Sprintf("  %sComandos: enable/disable/toggle \"buscar\"%s\n",
-		styleDim.Render("💡"), styleDim.Render("")))
-
-	return b.String()
-}
-
-func (m model) statsView() string {
-	totalHits := m.metrics.GetTotalHits()
-	ruleHits := m.metrics.GetRuleHits()
-
-	var b strings.Builder
-
-	b.WriteString(fmt.Sprintf("  %sEstadísticas de protección%s\n", styleValue.Render("📊"), styleDim.Render("")))
-
-	boxWidth := m.fullWidth - 8
-	if boxWidth < 30 {
-		boxWidth = 30
-	}
-
-	statsBox := fmt.Sprintf("  ╭─%s─╮\n", strings.Repeat("─", boxWidth))
-	statsBox += fmt.Sprintf("  │ %s%-*s%s │\n", styleValue.Render("Total de reemplazos:"), boxWidth-20, "", styleDim.Render(""))
-	statsBox += fmt.Sprintf("  │ %s%*d%s │\n", styleSuccess.Render(""), boxWidth-4, totalHits, styleDim.Render(""))
-
-	if totalHits > 0 {
-		statsBox += fmt.Sprintf("  │ %s%-*s%s │\n", styleDim.Render(""), boxWidth-4, "Detalle por regla:", styleDim.Render(""))
-		for rule, hits := range ruleHits {
-			line := fmt.Sprintf("    • %-30s %d veces", rule, hits)
-			statsBox += fmt.Sprintf("  │ %s%-*s%s │\n", styleSuccess.Render(""), boxWidth-4, line, styleDim.Render(""))
-		}
-	}
-
-	statsBox += fmt.Sprintf("  ╰─%s─╯\n", strings.Repeat("─", boxWidth))
-	b.WriteString(statsBox)
-
-	b.WriteString(fmt.Sprintf("\n  %sEscribe comandos para gestionar reglas.%s\n",
-		styleDim.Render("💡"), styleDim.Render("")))
+	b.WriteString(fmt.Sprintf("\n  [\u2191/\u2193] Navegar  [Enter] Toggle  [d] Eliminar\n"))
+	b.WriteString(fmt.Sprintf("  %s enable/disable/toggle \"buscar\"\n", styleDim.Render("\U0001F4A1")))
 
 	return b.String()
 }
@@ -265,18 +388,13 @@ func (m model) historyView() string {
 	var b strings.Builder
 
 	if len(events) == 0 {
-		b.WriteString(fmt.Sprintf("  %sNo hay detecciones registradas.%s\n",
-			styleDim.Render("📭"), styleDim.Render("")))
-		b.WriteString(fmt.Sprintf("  %sLas detecciones aparecerán aquí automáticamente.%s\n",
-			styleDim.Render("💡"), styleDim.Render("")))
+		b.WriteString(fmt.Sprintf("  %s No hay detecciones registradas.\n", styleDim.Render("\U0001F4ED")))
+		b.WriteString(fmt.Sprintf("  %s Las detecciones aparecer\u00E1n aqu\u00ED autom\u00E1ticamente.\n", styleDim.Render("\U0001F4A1")))
 		return b.String()
 	}
 
-	b.WriteString(fmt.Sprintf("  %-10s │ %s %s\n",
-		styleValue.Render("Hora"),
-		styleValue.Render("Reglas activadas"),
-		styleDim.Render("")))
-	b.WriteString("  " + styleDim.Render(strings.Repeat("─", m.fullWidth-6)) + "\n")
+	b.WriteString(styleValue.Render(fmt.Sprintf("  %-10s \u2502 %s\n", "Hora", "Reglas activadas")))
+	b.WriteString("  " + styleDim.Render(strings.Repeat("\u2500", m.fullWidth-6)) + "\n")
 
 	start := len(events) - 20
 	if start < 0 {
@@ -293,15 +411,11 @@ func (m model) historyView() string {
 			preview = evt.OriginalText
 		}
 
-		b.WriteString(fmt.Sprintf("  %s │ %s\n  %s │ %s\n",
-			styleDim.Render(timeStr),
-			styleSuccess.Render(rules),
-			styleDim.Render(""),
-			styleDim.Render(fmt.Sprintf("  \"%s\"", preview))))
+		b.WriteString(fmt.Sprintf("  %s \u2502 %s\n", styleDim.Render(timeStr), styleSuccess.Render(rules)))
+		b.WriteString(fmt.Sprintf("  %s\u2502 %s\n", strings.Repeat(" ", 10), styleDim.Render(fmt.Sprintf("  \"%s\"", preview))))
 	}
 
-	b.WriteString(fmt.Sprintf("\n  %sComando: clear (limpiar historial)%s\n",
-		styleDim.Render("💡"), styleDim.Render("")))
+	b.WriteString(fmt.Sprintf("\n  %s clear - limpiar historial\n", styleDim.Render("\U0001F4A1")))
 
 	return b.String()
 }
