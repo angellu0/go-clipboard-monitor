@@ -63,21 +63,35 @@ func (m model) paletteView() string {
 	}
 
 	boxW := m.fullWidth - 2
-	if boxW > 60 {
-		boxW = 60
+	if boxW > 80 {
+		boxW = 80
 	}
+
+	showSyntax := boxW >= 70
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(" %s Commands %s\n", styleValue.Render(""), styleValue.Render("")))
 	sb.WriteString(styleDim.Render(strings.Repeat("\u2500", boxW)))
 	sb.WriteString("\n")
 
-	for i, cmd := range filtered {
+	end := m.paletteOffset + paletteVisible
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	for i := m.paletteOffset; i < end; i++ {
+		cmd := filtered[i]
 		prefix := "  "
 		if i == m.paletteCursor {
 			prefix = styleSuccess.Render("\u25B8 ")
 		}
-		line := fmt.Sprintf("%s%-10s %s", prefix, cmd.name, cmd.description)
+
+		var line string
+		if showSyntax {
+			line = fmt.Sprintf("%s%-12s %-20s %s", prefix, cmd.name, cmd.brief, cmd.syntax)
+		} else {
+			line = fmt.Sprintf("%s%-12s %s", prefix, cmd.name, cmd.brief)
+		}
+
 		if len(line) > boxW {
 			line = line[:boxW-3] + "..."
 		}
@@ -86,6 +100,12 @@ func (m model) paletteView() string {
 		} else {
 			sb.WriteString(line)
 		}
+		sb.WriteString("\n")
+	}
+
+	if len(filtered) > paletteVisible {
+		scrollInfo := fmt.Sprintf("  %s %d/%d", styleDim.Render("\u2191\u2193"), m.paletteCursor+1, len(filtered))
+		sb.WriteString(styleDim.Render(scrollInfo))
 		sb.WriteString("\n")
 	}
 

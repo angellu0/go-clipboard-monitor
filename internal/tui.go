@@ -24,27 +24,31 @@ const (
 
 var tabNames = []string{"Dashboard", "Rules", "History"}
 
+const paletteVisible = 4
+
 type paletteCmd struct {
-	name        string
-	description string
+	name   string
+	brief  string
+	syntax string
 }
 
 var paletteCommands = []paletteCmd{
-	{"add", "Add a replacement rule: add \"buscar\" \"reemplazo\""},
-	{"del", "Delete a rule: del \"buscar\""},
-	{"enable", "Enable a rule: enable \"buscar\""},
-	{"disable", "Disable a rule: disable \"buscar\""},
-	{"toggle", "Toggle a rule on/off: toggle \"buscar\""},
-	{"pause", "Pause clipboard monitoring"},
-	{"resume", "Resume clipboard monitoring"},
-	{"dryrun", "Toggle dry-run mode (simulation only)"},
-	{"notify", "Toggle desktop notifications"},
-	{"clear", "Clear detection history"},
-	{"scan", "Scan a file for sensitive data"},
-	{"export", "Export rules to JSON file"},
-	{"import", "Import rules from JSON file"},
-	{"help", "Show available commands"},
-	{"quit", "Exit the application"},
+	{"add", "Agregar regla", `add "buscar" "reemplazo"`},
+	{"add -regex", "Agregar regex", `add -regex "patrón" "reemplazo"`},
+	{"del", "Eliminar regla", `del "buscar"`},
+	{"enable", "Habilitar regla", `enable "buscar"`},
+	{"disable", "Deshabilitar regla", `disable "buscar"`},
+	{"toggle", "Alternar regla", `toggle "buscar"`},
+	{"pause", "Pausar monitor", "pause"},
+	{"resume", "Reanudar monitor", "resume"},
+	{"dryrun", "Modo simulación", "dryrun"},
+	{"notify", "Notificaciones", "notify"},
+	{"clear", "Limpiar historial", "clear"},
+	{"scan", "Escanear archivo", `scan "archivo"`},
+	{"export", "Exportar reglas", "export [archivo]"},
+	{"import", "Importar reglas", `import "archivo"`},
+	{"help", "Mostrar ayuda", "help"},
+	{"quit", "Salir", "quit"},
 }
 
 type model struct {
@@ -66,8 +70,9 @@ type model struct {
 
 	ruleKeys      []string
 	ruleCursor    int
-	showPalette   bool
-	paletteCursor int
+	showPalette    bool
+	paletteCursor  int
+	paletteOffset  int
 
 	width     int
 	height    int
@@ -109,8 +114,9 @@ func NewTUI(monitor *Monitor, metrics *Metrics, engine *Engine, history *History
 		desktopNotifs: desktopNotif != nil && desktopNotif.Enabled,
 		input:         ti,
 		ruleKeys:      make([]string, 0),
-		showPalette:   false,
-		paletteCursor: 0,
+		showPalette:    false,
+		paletteCursor:  0,
+		paletteOffset:  0,
 		width:         80,
 		height:        24,
 		fullWidth:     70,
@@ -163,6 +169,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.KeyUp:
 				if m.paletteCursor > 0 {
 					m.paletteCursor--
+					if m.paletteCursor < m.paletteOffset {
+						m.paletteOffset--
+					}
 				}
 				return m, nil
 
@@ -170,6 +179,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				filtered := m.filteredPalette()
 				if m.paletteCursor < len(filtered)-1 {
 					m.paletteCursor++
+					if m.paletteCursor >= m.paletteOffset+paletteVisible {
+						m.paletteOffset++
+					}
 				}
 				return m, nil
 
@@ -193,6 +205,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input, cmd = m.input.Update(msg)
 				if m.input.Value() == "" || !strings.HasPrefix(m.input.Value(), "/") {
 					m.showPalette = false
+				} else {
+					m.clampPaletteCursor()
 				}
 				return m, cmd
 
@@ -201,6 +215,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input, cmd = m.input.Update(msg)
 				if !strings.HasPrefix(m.input.Value(), "/") {
 					m.showPalette = false
+				} else {
+					m.clampPaletteCursor()
 				}
 				return m, cmd
 
@@ -281,6 +297,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.showPalette && m.input.Value() == "" && len(msg.Runes) == 1 && msg.Runes[0] == '/' {
 				m.showPalette = true
 				m.paletteCursor = 0
+				m.paletteOffset = 0
 				var cmd tea.Cmd
 				m.input, cmd = m.input.Update(msg)
 				return m, cmd
@@ -345,6 +362,22 @@ func (m *model) refreshRuleKeys() {
 	sort.Strings(m.ruleKeys)
 	if m.ruleCursor >= len(m.ruleKeys) {
 		m.ruleCursor = 0
+	}
+}
+
+func (m *model) clampPaletteCursor() {
+	filtered := m.filteredPalette()
+	if m.paletteCursor >= len(filtered) {
+		m.paletteCursor = len(filtered) - 1
+	}
+	if m.paletteCursor < 0 {
+		m.paletteCursor = 0
+	}
+	if m.paletteOffset >= len(filtered) {
+		m.paletteOffset = 0
+	}
+	if m.paletteCursor < m.paletteOffset {
+		m.paletteOffset = m.paletteCursor
 	}
 }
 
