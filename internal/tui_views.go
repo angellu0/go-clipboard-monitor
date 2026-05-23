@@ -350,7 +350,7 @@ func (m model) rulesView() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("\n  [\u2191/\u2193] Navegar  [Enter] Toggle  [d] Eliminar\n"))
+	b.WriteString(fmt.Sprintf("\n  [\u2191/\u2193] Navegar  [Enter] Toggle\n"))
 	b.WriteString(fmt.Sprintf("  %s enable/disable/toggle \"buscar\"\n", styleDim.Render("\U0001F4A1")))
 
 	return b.String()

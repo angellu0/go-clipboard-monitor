@@ -286,32 +286,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-			if (m.activeTab == tabRules || m.width >= 110) && m.input.Value() == "" && len(msg.Runes) == 1 {
-				switch msg.Runes[0] {
-				case 'd', 'D':
-					if m.ruleCursor < len(m.ruleKeys) {
-						search := m.ruleKeys[m.ruleCursor]
-						RemoveRule(search)
-						m.engine.UpdateRules(GetEnabledRules())
-						m.refreshRuleKeys()
-						m.statusMsg = fmt.Sprintf("🗑️ Eliminada: %s", search)
-					}
-					return m, nil
-				case 'e', 'E':
-					if m.ruleCursor < len(m.ruleKeys) {
-						search := m.ruleKeys[m.ruleCursor]
-						enabled := ToggleRule(search)
-						m.engine.UpdateRules(GetEnabledRules())
-						if enabled {
-							m.statusMsg = fmt.Sprintf("🟢 Habilitada: %s", search)
-						} else {
-							m.statusMsg = fmt.Sprintf("🔴 Deshabilitada: %s", search)
-						}
-					}
-					return m, nil
-				}
-			}
-
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
