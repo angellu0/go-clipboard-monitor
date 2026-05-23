@@ -1,81 +1,118 @@
 # 🛡️ Clipboard Monitor - Portapapeles seguro
 
-Clipboard Monitor es una herramienta diseñada para proteger información sensible 
-(IPs, contraseñas, tokens) al interactuar con IAs o chats externos. 
-El programa vigila tu portapapeles y reemplaza automáticamente las palabras que 
-tú definas antes de que las pegues en cualquier lugar.
+Clipboard Monitor es una herramienta **cross-platform** (Windows/Linux) diseñada para proteger información sensible 
+(IPs, contraseñas, tokens, API keys) al interactuar con IAs o chats externos. 
+Vigila tu portapapeles y reemplaza automáticamente datos sensibles antes de pegarlos.
 
-
-## 🚀 Compilación rápida
+## 🚀 Compilación
 
 ```bash
 # Windows
-set GOOS=windows
-set GOARCH=amd64
-go build -o clipboard_monitor.exe main.go
+set GOOS=windows && set GOARCH=amd64 && go build -o clipboard_monitor.exe .
 
 # Linux
-set GOOS=linux
-set GOARCH=amd64
-go build -o clipboard_monitor main.go
+GOOS=linux GOARCH=amd64 go build -o clipboard_monitor .
 ```
 
+O usa los scripts en `scripts/`:
+- Windows: `scripts\build.bat`
+- Linux: `scripts\build.sh`
 
-## 🛠️ Cómo usarlo
+## 🖥️ TUI (Interfaz en terminal)
 
-### 1. El vigilante (Modo interactivo)
+Al ejecutar el programa entras en una interfaz TUI moderna con pestañas:
 
-Al ejecutar el programa, entrarás en una consola protegida. El monitor se 
-activa automáticamente en segundo plano. No necesitas abrir otras terminales; 
-puedes escribir comandos directamente mientras el programa sigue vigilando tu 
-portapapeles.
+| Pestaña     | Descripción                                    |
+|-------------|------------------------------------------------|
+| Dashboard   | Estado del monitor, estadísticas, últimas detecciones |
+| Rules       | Lista de reglas con navegación y acciones       |
+| Stats       | Estadísticas detalladas de reemplazos           |
+| History     | Historial de detecciones                        |
 
-### 2. Agregar nuevas palabras
-
-Ahora puedes agregar palabras simples o frases completas usando comillas. 
-Escribe el comando directamente en la consola del programa:
-
-- **Palabras simples:** add IP_LOCAL 127.0.0.1
-- **Frases con espacios:** add "Mi empresa segura" "trabajo"
-
-Nota: El uso de comillas " es obligatorio si tu búsqueda o tu reemplazo contienen espacios.
-
-### 3. Ver y gestionar reglas
-
-Desde la misma consola, puedes interactuar con el diccionario de protección:
-
-- Para ver lo que estás protegiendo: Escribe list.
-- Para editar manualmente: Abre el archivo `replacements.json`. Los cambios se cargan en tiempo real sin reiniciar.
-
-### 4. Escanear archivos
-
-Puedes analizar y sanitizar archivos aplicando las mismas reglas de protección:
-
-```bash
-scan ruta/de/mi/archivo.txt
-scan logs/aplicacion.log
-```
-
-El comando generará un nuevo archivo con el sufijo `_sanitized` (ej: `archivo_sanitized.txt`) 
-manteniendo el original intacto. Actualmente soporta archivos `.txt` y `.log`.
-
+### Navegación
+- `←` `→` / `Tab`: Cambiar de pestaña
+- `1` `2` `3` `4`: Ir directamente a una pestaña
+- `↑` `↓`: Navegar reglas (en pestaña Rules)
+- `Enter`: Toggle habilitar/deshabilitar regla (Rules, input vacío)
+- `d`: Eliminar regla seleccionada (Rules, input vacío)
+- `e`: Toggle enable/disable regla (Rules, input vacío)
+- `Esc`: Limpiar input
+- `Ctrl+C`: Salir
 
 ## 📋 Comandos disponibles
 
-| Comando | Formato                  | Descripción                               |
-|---------|--------------------------|-------------------------------------------|
-| add     | add "buscar" "reemplazo" | Registra una nueva regla (soporta frases) |
-| list    | list                     | Muestra la tabla de reglas activas        |
-| stats   | stats                    | Muestra las estadísticas de la sesión     |
-| scan    | scan ruta/archivo.txt    | Escanea y sanitiza archivos (.txt, .log)  |
-| help    | help                     | Muestra la guía rápida de comandos        |
+Escribe los comandos en la barra inferior de la TUI:
 
+| Comando | Formato | Descripción |
+|---------|---------|-------------|
+| `add` | `add "buscar" "reemplazo"` | Añade regla de texto exacto |
+| `add -regex` | `add -regex "patrón" "reemplazo"` | Añade regla con expresión regular |
+| `del` | `del "buscar"` | Elimina una regla |
+| `enable` | `enable "buscar"` | Habilita una regla |
+| `disable` | `disable "buscar"` | Deshabilita una regla |
+| `toggle` | `toggle "buscar"` | Alterna estado de una regla |
+| `list` | `list` | Muestra las reglas (cambia a pestaña Rules) |
+| `stats` | `stats` | Muestra estadísticas (cambia a pestaña Stats) |
+| `history` | `history` | Muestra historial (cambia a pestaña History) |
+| `pause` | `pause` | Pausa la vigilancia del portapapeles |
+| `resume` | `resume` | Reanuda la vigilancia |
+| `dryrun` | `dryrun` | Alterna modo simulación (no modifica portapapeles) |
+| `autodetect` | `autodetect` | Alterna detección automática de patrones sensibles |
+| `profile` | `profile nombre` | Cambia a un perfil de reglas |
+| `scan` | `scan ruta/archivo.txt` | Escanea y sanitiza un archivo |
+| `export` | `export [archivo.json]` | Exporta reglas a JSON |
+| `import` | `import archivo.json` | Importa reglas desde JSON |
+| `clear` | `clear` | Limpia el historial de detecciones |
+| `help` | `help` | Muestra la ayuda rápida |
+| `quit` | `quit` | Cierra el programa |
+
+## 🧪 Auto-detección de patrones
+
+Al activar `autodetect`, el monitor detecta automáticamente:
+
+- **API Keys** (`api_key=...`, `apikey:...`)
+- **Tokens** (`token:...`, `bearer ...`, `jwt ...`)
+- **Contraseñas** (`password=...`, `secret:...`)
+- **Emails** (`usuario@dominio.com`)
+- **Direcciones IP** (`192.168.1.1`)
+- **Claves privadas** (`-----BEGIN PRIVATE KEY-----`)
+
+## 📂 Formatos de archivo soportados (scan)
+
+- `.txt`, `.log`, `.md`
+- `.json` (formatea y sanitiza)
+- `.yaml`, `.yml`
+- `.env`
+- `.csv`
+
+## 📁 Perfiles de reglas
+
+Puedes tener múltiples perfiles de reglas para diferentes contextos:
+
+```bash
+profile trabajo    # Cambia al perfil "trabajo"
+profile personal   # Cambia al perfil "personal"
+```
+
+## 🔄 Exportar/Importar reglas
+
+```bash
+export mis_reglas.json    # Exporta reglas actuales
+import mis_reglas.json    # Importa reglas desde archivo
+```
 
 ## Notas de seguridad
 
-El programa no envía datos a internet. Todo el proceso ocurre localmente en tu memoria RAM. 
-Si cierras la ventana de la terminal, el programa dejará de proteger el portapapeles.
+- El programa no envía datos a internet
+- Todo el proceso ocurre localmente en RAM
+- Al cerrar la terminal, el monitor deja de proteger
 
+## 🐧 Cross-platform
+
+El proyecto compila y funciona en **Windows** y **Linux**:
+- Lock de instancia única adaptado a cada plataforma
+- Monitoreo de portapapeles con `github.com/atotto/clipboard`
+- TUI con bubbletea (compatible con ambas plataformas)
 
 ## Autor
 
