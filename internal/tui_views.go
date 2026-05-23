@@ -122,7 +122,6 @@ func (m model) wideLayout() string {
 
 func (m model) wideStatsPanel(w int) string {
 	totalHits := m.metrics.GetTotalHits()
-	ruleHits := m.metrics.GetRuleHits()
 
 	box := lipgloss.NewStyle().Width(w)
 
@@ -135,20 +134,6 @@ func (m model) wideStatsPanel(w int) string {
 	sb.WriteString(fmt.Sprintf("  Replacements: %s\n", styleValue.Render(fmt.Sprintf("%d", totalHits))))
 	sb.WriteString(fmt.Sprintf("  Active Rules: %s\n", styleValue.Render(fmt.Sprintf("%d", len(ListRulesMap())))))
 	sb.WriteString(fmt.Sprintf("  History:      %s\n", styleValue.Render(fmt.Sprintf("%d", len(m.history.Events())))))
-
-	if totalHits > 0 {
-		sb.WriteString(fmt.Sprintf("\n  %s Top rules:\n", styleValue.Render("\U0001F4CA")))
-		count := 0
-		for rule, hits := range ruleHits {
-			if count >= 4 {
-				break
-			}
-			sb.WriteString(fmt.Sprintf("    \u2022 %s", rule))
-			sb.WriteString(styleDim.Render(fmt.Sprintf(" (%dx)", hits)))
-			sb.WriteString("\n")
-			count++
-		}
-	}
 
 	events := m.history.Events()
 	if len(events) > 0 {
@@ -188,11 +173,12 @@ func (m model) wideRulesPanel(w int) string {
 		sb.WriteString(fmt.Sprintf("  %s add \"buscar\" \"reemplazo\"\n", styleDim.Render("\U0001F4A1")))
 	} else {
 		displayed := 0
-		for search, rule := range rules {
+		for idx, search := range m.ruleKeys {
 			if displayed >= 12 {
 				sb.WriteString(fmt.Sprintf("\n  %s ...", styleDim.Render("")))
 				break
 			}
+			rule := rules[search]
 			icon := "\U0001F7E2"
 			if !rule.Enabled {
 				icon = "\U0001F534"
@@ -209,9 +195,15 @@ func (m model) wideRulesPanel(w int) string {
 			if rule.Regex {
 				suffix = " [regex]"
 			}
-			line := fmt.Sprintf("  %s %s%s", icon, s, suffix)
-			if rule.Enabled {
+			cursor := "  "
+			if idx == m.ruleCursor {
+				cursor = styleSuccess.Render("\u25B8 ")
+			}
+			line := fmt.Sprintf("%s%s %s%s", cursor, icon, s, suffix)
+			if idx == m.ruleCursor {
 				sb.WriteString(styleSuccess.Render(line))
+			} else if rule.Enabled {
+				sb.WriteString(line)
 			} else {
 				sb.WriteString(styleDim.Render(line))
 			}
@@ -222,6 +214,7 @@ func (m model) wideRulesPanel(w int) string {
 		if len(rules) > 12 {
 			sb.WriteString(fmt.Sprintf("\n  %s %d more...\n", styleDim.Render(""), len(rules)-12))
 		}
+		sb.WriteString(fmt.Sprintf("\n  [\u2191/\u2193] Navegar  [Enter] Toggle\n"))
 	}
 
 	return box.Render(sb.String())
@@ -260,7 +253,6 @@ func (m model) renderDivider() string {
 
 func (m model) dashboardView() string {
 	totalHits := m.metrics.GetTotalHits()
-	ruleHits := m.metrics.GetRuleHits()
 
 	var b strings.Builder
 
@@ -283,20 +275,6 @@ func (m model) dashboardView() string {
 	b.WriteString("  ")
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, stats...))
 	b.WriteString("\n\n")
-
-	if totalHits > 0 {
-		b.WriteString(fmt.Sprintf("  %s Top reglas activadas:\n", styleValue.Render("\U0001F4CA")))
-		count := 0
-		for rule, hits := range ruleHits {
-			if count >= 5 {
-				break
-			}
-			b.WriteString(styleSuccess.Render(fmt.Sprintf("    \u2022 %s", rule)))
-			b.WriteString(styleDim.Render(fmt.Sprintf(" (%dx)", hits)))
-			b.WriteString("\n")
-			count++
-		}
-	}
 
 	events := m.history.Events()
 	if len(events) > 0 {
@@ -332,12 +310,7 @@ func (m model) rulesView() string {
 	b.WriteString(styleValue.Render(fmt.Sprintf("  %-30s %s\n", "Buscar", "Reemplazar")))
 	b.WriteString("  " + styleDim.Render(strings.Repeat("\u2500", m.fullWidth-6)) + "\n")
 
-	keys := make([]string, 0, len(rules))
-	for k := range rules {
-		keys = append(keys, k)
-	}
-
-	for idx, k := range keys {
+	for idx, k := range m.ruleKeys {
 		r := rules[k]
 		icon := "\U0001F7E2"
 		if !r.Enabled {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,7 +97,7 @@ func NewTUI(monitor *Monitor, metrics *Metrics, engine *Engine, history *History
 	ti.Width = 60
 	ti.Focus()
 
-	return &model{
+	m := &model{
 		monitor:       monitor,
 		metrics:       metrics,
 		engine:        engine,
@@ -114,6 +115,8 @@ func NewTUI(monitor *Monitor, metrics *Metrics, engine *Engine, history *History
 		height:        24,
 		fullWidth:     70,
 	}
+	m.refreshRuleKeys()
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -241,7 +244,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshRuleKeys()
 
 		case tea.KeyUp:
-			if m.activeTab == tabRules && len(m.ruleKeys) > 0 {
+			if (m.activeTab == tabRules || m.width >= 110) && len(m.ruleKeys) > 0 {
 				if m.ruleCursor > 0 {
 					m.ruleCursor--
 				}
@@ -249,7 +252,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyDown:
-			if m.activeTab == tabRules && len(m.ruleKeys) > 0 {
+			if (m.activeTab == tabRules || m.width >= 110) && len(m.ruleKeys) > 0 {
 				if m.ruleCursor < len(m.ruleKeys)-1 {
 					m.ruleCursor++
 				}
@@ -257,7 +260,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyEnter:
-			if m.activeTab == tabRules && m.input.Value() == "" && len(m.ruleKeys) > 0 && m.ruleCursor < len(m.ruleKeys) {
+			if (m.activeTab == tabRules || m.width >= 110) && m.input.Value() == "" && len(m.ruleKeys) > 0 && m.ruleCursor < len(m.ruleKeys) {
 				search := m.ruleKeys[m.ruleCursor]
 				enabled := ToggleRule(search)
 				m.engine.UpdateRules(GetEnabledRules())
@@ -283,7 +286,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-			if m.activeTab == tabRules && m.input.Value() == "" && len(msg.Runes) == 1 {
+			if (m.activeTab == tabRules || m.width >= 110) && m.input.Value() == "" && len(msg.Runes) == 1 {
 				switch msg.Runes[0] {
 				case 'd', 'D':
 					if m.ruleCursor < len(m.ruleKeys) {
@@ -309,14 +312,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			if len(msg.Runes) == 1 && msg.Runes[0] >= '1' && msg.Runes[0] <= '3' {
-				idx := tab(msg.Runes[0] - '1')
-				if idx >= tabDashboard && idx <= tabHistory {
-					m.activeTab = idx
-					m.refreshRuleKeys()
-					return m, nil
-				}
-			}
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
@@ -373,6 +368,7 @@ func (m *model) refreshRuleKeys() {
 	for k := range rules {
 		m.ruleKeys = append(m.ruleKeys, k)
 	}
+	sort.Strings(m.ruleKeys)
 	if m.ruleCursor >= len(m.ruleKeys) {
 		m.ruleCursor = 0
 	}
