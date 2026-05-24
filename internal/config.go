@@ -2,7 +2,6 @@ package internal
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"sync"
 )
@@ -16,13 +15,13 @@ type Rule struct {
 }
 
 type Config struct {
-	Words       map[string]string            `json:"words,omitempty"`
-	Rules       map[string]Rule              `json:"rules,omitempty"`
-	Profile     string                       `json:"profile"`
-	Profiles    map[string]map[string]Rule   `json:"profiles,omitempty"`
-	Detect      DetectConfig                 `json:"detect"`
+	Words    map[string]string          `json:"words,omitempty"`
+	Rules    map[string]Rule            `json:"rules,omitempty"`
+	Profile  string                     `json:"profile"`
+	Profiles map[string]map[string]Rule `json:"profiles,omitempty"`
+	Detect   DetectConfig               `json:"detect"`
 
-	mu          sync.RWMutex
+	mu sync.RWMutex
 }
 
 type DetectConfig struct {
@@ -73,9 +72,9 @@ func LoadConfig() *Config {
 
 func defaultConfig() *Config {
 	return &Config{
-		Rules:       make(map[string]Rule),
-		Profile:     "default",
-		Profiles:    make(map[string]map[string]Rule),
+		Rules:    make(map[string]Rule),
+		Profile:  "default",
+		Profiles: make(map[string]map[string]Rule),
 
 		Detect: DetectConfig{
 			AutoEnabled: false,
@@ -167,28 +166,6 @@ func SetRuleEnabled(search string, enabled bool) bool {
 	return true
 }
 
-func ListRules() {
-	c := GetConfig()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	fmt.Println(BoxTop)
-	fmt.Printf("  %s📋 Reglas activas:%s\n", ColorPrimary, ColorReset)
-	fmt.Println("")
-	for k, v := range c.Rules {
-		status := "🟢"
-		if !v.Enabled {
-			status = "🔴"
-		}
-		kind := ""
-		if v.Regex {
-			kind = " [regex]"
-		}
-		fmt.Printf("  %s%s %-22s > %s%s%s\n", ColorGreen, status, k, v.Replace, kind, ColorReset)
-	}
-	fmt.Println(BoxBottom)
-}
-
 func ListRulesMap() map[string]Rule {
 	c := GetConfig()
 	c.mu.RLock()
@@ -224,62 +201,4 @@ func SaveConfig(c *Config) {
 func saveConfig(c *Config) {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	os.WriteFile(configPath, data, 0644)
-}
-
-func (m *Metrics) PrintStats() {
-	fmt.Println(BoxTop)
-	fmt.Printf("  %s📊 Estadísticas de protección%s\n", ColorPrimary, ColorReset)
-	fmt.Printf("\n  %sTotal de reemplazos: %-15d%s", ColorGreen, m.TotalHits, ColorReset)
-	fmt.Println("")
-
-	if len(m.RuleHits) == 0 {
-		fmt.Printf("  %sNo hay reglas activadas aún%s\n", ColorYellow, ColorReset)
-		fmt.Println(BoxBottom)
-		return
-	}
-
-	fmt.Println("  Detalle por regla:")
-	for k, v := range m.RuleHits {
-		fmt.Printf("  %s• %-20s: %d veces%s\n", ColorGreen, k, v, ColorReset)
-	}
-	fmt.Println(BoxBottom)
-}
-
-func SwitchProfile(name string) bool {
-	c := GetConfig()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if _, ok := c.Profiles[name]; !ok {
-		return false
-	}
-
-	c.Profile = name
-	c.Rules = make(map[string]Rule)
-	for k, v := range c.Profiles[name] {
-		c.Rules[k] = v
-	}
-	saveConfig(c)
-	return true
-}
-
-func CreateProfile(name string, rules map[string]Rule) {
-	c := GetConfig()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.Profiles[name] = rules
-	saveConfig(c)
-}
-
-func ListProfiles() []string {
-	c := GetConfig()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	profiles := make([]string, 0, len(c.Profiles))
-	for k := range c.Profiles {
-		profiles = append(profiles, k)
-	}
-	return profiles
 }

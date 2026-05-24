@@ -8,38 +8,38 @@ import (
 )
 
 type MonitorEvent struct {
-	Result   Result
-	Paused   bool
-	DryRun   bool
-	Error    error
-	Type     string
+	Result Result
+	Paused bool
+	DryRun bool
+	Error  error
+	Type   string
 }
 
 type Monitor struct {
-	Engine     *Engine
-	Metrics    *Metrics
-	Notifier   Notifier
-	DryRun     bool
-	paused     bool
-	Events     chan MonitorEvent
-	done       chan struct{}
-	pauseCh    chan bool
-	dryRunCh   chan bool
-	mu         sync.RWMutex
+	Engine      *Engine
+	Metrics     *Metrics
+	Notifier    Notifier
+	DryRun      bool
+	paused      bool
+	Events      chan MonitorEvent
+	done        chan struct{}
+	pauseCh     chan bool
+	dryRunCh    chan bool
+	mu          sync.RWMutex
 	lastContent string
 	autoDetect  bool
 }
 
 func NewMonitor(engine *Engine, metrics *Metrics, notifier Notifier, dryRun bool) *Monitor {
 	return &Monitor{
-		Engine:    engine,
-		Metrics:   metrics,
-		Notifier:  notifier,
-		DryRun:    dryRun,
-		Events:    make(chan MonitorEvent, 10),
-		done:      make(chan struct{}),
-		pauseCh:   make(chan bool),
-		dryRunCh:  make(chan bool),
+		Engine:     engine,
+		Metrics:    metrics,
+		Notifier:   notifier,
+		DryRun:     dryRun,
+		Events:     make(chan MonitorEvent, 10),
+		done:       make(chan struct{}),
+		pauseCh:    make(chan bool),
+		dryRunCh:   make(chan bool),
 		autoDetect: false,
 	}
 }
@@ -76,33 +76,12 @@ func (m *Monitor) Resume() {
 	m.Events <- MonitorEvent{Type: "resumed", Paused: false}
 }
 
-func (m *Monitor) TogglePause() bool {
-	m.mu.Lock()
-	m.paused = !m.paused
-	paused := m.paused
-	m.mu.Unlock()
-	if paused {
-		m.Events <- MonitorEvent{Type: "paused", Paused: true}
-	} else {
-		m.Events <- MonitorEvent{Type: "resumed", Paused: false}
-	}
-	return paused
-}
-
 func (m *Monitor) ToggleDryRun() bool {
 	m.mu.Lock()
 	m.DryRun = !m.DryRun
 	dryRun := m.DryRun
 	m.mu.Unlock()
 	return dryRun
-}
-
-func (m *Monitor) ToggleAutoDetect() bool {
-	m.mu.Lock()
-	m.autoDetect = !m.autoDetect
-	ad := m.autoDetect
-	m.mu.Unlock()
-	return ad
 }
 
 func (m *Monitor) Stop() {

@@ -1,11 +1,8 @@
 package internal
 
 const (
-	ColorReset   = "\033[0m"
-	ColorGreen   = "\033[32m"
-	ColorYellow  = "\033[33m"
-	ColorBlue    = "\033[34m"
-	ColorPrimary = "\033[92m"
+	ColorReset  = "\033[0m"
+	ColorYellow = "\033[33m"
 )
 
 const (
@@ -13,4 +10,4 @@ const (
 	BoxBottom = "╰──────────────────────────────────────────────────────────╯"
 )
 
-const Version = "1.2.0"
+const Version = "1.3.0"

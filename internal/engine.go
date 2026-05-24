@@ -99,7 +99,3 @@ func (e *Engine) ProcessWithAutoDetect(input string, patterns []string) Result {
 	result.ModifiedText = modified
 	return result
 }
-
-func GetAutoDetectPatterns() []AutoDetectPattern {
-	return autoDetectPatterns
-}
