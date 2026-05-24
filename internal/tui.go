@@ -14,17 +14,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type tab int
-
-const (
-	tabDashboard tab = iota
-	tabRules
-	tabHistory
-)
-
-var tabNames = []string{"Dashboard", "Rules", "History"}
-
 const paletteVisible = 4
+const ruleVisible = 3
 
 type paletteCmd struct {
 	name   string
@@ -33,32 +24,30 @@ type paletteCmd struct {
 }
 
 var paletteCommands = []paletteCmd{
-	{"add", "Agregar regla", `add "buscar" "reemplazo"`},
-	{"add -regex", "Agregar regex", `add -regex "patrón" "reemplazo"`},
-	{"del", "Eliminar regla", `del "buscar"`},
-	{"enable", "Habilitar regla", `enable "buscar"`},
-	{"disable", "Deshabilitar regla", `disable "buscar"`},
-	{"toggle", "Alternar regla", `toggle "buscar"`},
-	{"pause", "Pausar monitor", "pause"},
-	{"resume", "Reanudar monitor", "resume"},
-	{"dryrun", "Modo simulación", "dryrun"},
-	{"notify", "Notificaciones", "notify"},
-	{"clear", "Limpiar historial", "clear"},
-	{"scan", "Escanear archivo", `scan "archivo"`},
-	{"export", "Exportar reglas", "export [archivo]"},
-	{"import", "Importar reglas", `import "archivo"`},
-	{"help", "Mostrar ayuda", "help"},
-	{"quit", "Salir", "quit"},
+	{"add", "Add rule", `add "search" "replace"`},
+	{"add -regex", "Add regex", `add -regex "pattern" "replace"`},
+	{"del", "Delete rule", `del "search"`},
+	{"enable", "Enable rule", `enable "search"`},
+	{"disable", "Disable rule", `disable "search"`},
+	{"toggle", "Toggle rule", `toggle "search"`},
+	{"pause", "Pause monitor", "pause"},
+	{"resume", "Resume monitor", "resume"},
+	{"dryrun", "Simulation mode", "dryrun"},
+	{"notify", "Notifications", "notify"},
+	{"clear", "Clear history", "clear"},
+	{"scan", "Scan file", `scan "file"`},
+	{"export", "Export rules", "export [file]"},
+	{"import", "Import rules", `import "file"`},
+	{"help", "Show help", "help"},
+	{"quit", "Exit", "quit"},
 }
 
 type model struct {
-	activeTab tab
-
-	monitor       *Monitor
-	metrics       *Metrics
-	engine        *Engine
-	history       *History
-	desktopNotif  *DesktopNotifier
+	monitor      *Monitor
+	metrics      *Metrics
+	engine       *Engine
+	history      *History
+	desktopNotif *DesktopNotifier
 
 	paused        bool
 	dryRun        bool
@@ -70,9 +59,10 @@ type model struct {
 
 	ruleKeys      []string
 	ruleCursor    int
-	showPalette    bool
-	paletteCursor  int
-	paletteOffset  int
+	ruleOffset    int
+	showPalette   bool
+	paletteCursor int
+	paletteOffset int
 
 	width     int
 	height    int
@@ -84,11 +74,8 @@ var (
 	styleSuccess = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("82"))
 
-	styleWarning = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("220"))
-
 	styleDim = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+			Foreground(lipgloss.Color("240"))
 
 	styleValue = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("87"))
@@ -96,7 +83,7 @@ var (
 
 func NewTUI(monitor *Monitor, metrics *Metrics, engine *Engine, history *History, desktopNotif *DesktopNotifier) *model {
 	ti := textinput.New()
-	ti.Placeholder = "Escribe un comando (help para ayuda)"
+	ti.Placeholder = "Type / to see available commands"
 	ti.Prompt = "> "
 	ti.CharLimit = 256
 	ti.Width = 60
@@ -114,9 +101,10 @@ func NewTUI(monitor *Monitor, metrics *Metrics, engine *Engine, history *History
 		desktopNotifs: desktopNotif != nil && desktopNotif.Enabled,
 		input:         ti,
 		ruleKeys:      make([]string, 0),
-		showPalette:    false,
-		paletteCursor:  0,
-		paletteOffset:  0,
+		ruleOffset:    0,
+		showPalette:   false,
+		paletteCursor: 0,
+		paletteOffset: 0,
 		width:         80,
 		height:        24,
 		fullWidth:     70,
@@ -231,59 +219,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.monitor.Stop()
 			return m, tea.Quit
 
-		case tea.KeyLeft:
-			if m.activeTab > tabDashboard {
-				m.activeTab--
-			}
-			m.refreshRuleKeys()
-
-		case tea.KeyRight:
-			if m.activeTab < tabHistory {
-				m.activeTab++
-			}
-			m.refreshRuleKeys()
-
-		case tea.KeyTab:
-			if m.activeTab < tabHistory {
-				m.activeTab++
-			} else {
-				m.activeTab = tabDashboard
-			}
-			m.refreshRuleKeys()
-
-		case tea.KeyShiftTab:
-			if m.activeTab > tabDashboard {
-				m.activeTab--
-			} else {
-				m.activeTab = tabHistory
-			}
-			m.refreshRuleKeys()
-
 		case tea.KeyUp:
-			if (m.activeTab == tabRules || m.width >= 110) && len(m.ruleKeys) > 0 {
-				if m.ruleCursor > 0 {
-					m.ruleCursor--
+			if len(m.ruleKeys) > 0 && m.ruleCursor > 0 {
+				m.ruleCursor--
+				if m.ruleCursor < m.ruleOffset {
+					m.ruleOffset--
 				}
 			}
 			return m, nil
 
 		case tea.KeyDown:
-			if (m.activeTab == tabRules || m.width >= 110) && len(m.ruleKeys) > 0 {
-				if m.ruleCursor < len(m.ruleKeys)-1 {
-					m.ruleCursor++
+			if len(m.ruleKeys) > 0 && m.ruleCursor < len(m.ruleKeys)-1 {
+				m.ruleCursor++
+				if m.ruleCursor >= m.ruleOffset+ruleVisible {
+					m.ruleOffset++
 				}
 			}
 			return m, nil
 
 		case tea.KeyEnter:
-			if (m.activeTab == tabRules || m.width >= 110) && m.input.Value() == "" && len(m.ruleKeys) > 0 && m.ruleCursor < len(m.ruleKeys) {
+			if m.input.Value() == "" && len(m.ruleKeys) > 0 && m.ruleCursor < len(m.ruleKeys) {
 				search := m.ruleKeys[m.ruleCursor]
 				enabled := ToggleRule(search)
 				m.engine.UpdateRules(GetEnabledRules())
 				if enabled {
-					m.statusMsg = fmt.Sprintf("🟢 Regla habilitada: %s", search)
+					m.statusMsg = fmt.Sprintf("🟢 Rule enabled: %s", search)
 				} else {
-					m.statusMsg = fmt.Sprintf("🔴 Regla deshabilitada: %s", search)
+					m.statusMsg = fmt.Sprintf("🔴 Rule disabled: %s", search)
 				}
 				return m, nil
 			}
@@ -319,20 +281,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case "detection":
 			m.history.Add(DetectionEvent{
-				Timestamp:       time.Now(),
-				OriginalText:    msg.Result.OriginalText,
-				ModifiedText:    msg.Result.ModifiedText,
-				TriggeredRules:  msg.Result.TriggeredRules,
+				Timestamp:      time.Now(),
+				OriginalText:   msg.Result.OriginalText,
+				ModifiedText:   msg.Result.ModifiedText,
+				TriggeredRules: msg.Result.TriggeredRules,
 			})
-			m.statusMsg = fmt.Sprintf("🔒 Detectado: %s", strings.Join(msg.Result.TriggeredRules, ", "))
+			m.statusMsg = fmt.Sprintf("🔒 Detected: %s", strings.Join(msg.Result.TriggeredRules, ", "))
 
 		case "paused":
 			m.paused = true
-			m.statusMsg = "⏸️ Monitor pausado"
+			m.statusMsg = "⏸️ Monitor paused"
 
 		case "resumed":
 			m.paused = false
-			m.statusMsg = "▶️ Monitor reanudado"
+			m.statusMsg = "▶️ Monitor resumed"
 
 		case "error":
 			m.statusMsg = fmt.Sprintf("❌ Error: %v", msg.Error)
@@ -362,6 +324,12 @@ func (m *model) refreshRuleKeys() {
 	sort.Strings(m.ruleKeys)
 	if m.ruleCursor >= len(m.ruleKeys) {
 		m.ruleCursor = 0
+	}
+	if m.ruleOffset >= len(m.ruleKeys) {
+		m.ruleOffset = 0
+	}
+	if m.ruleCursor < m.ruleOffset {
+		m.ruleOffset = m.ruleCursor
 	}
 }
 
@@ -424,59 +392,59 @@ func (m *model) processInput() tea.Cmd {
 	switch args[0] {
 	case "add":
 		if len(args) < 3 {
-			m.statusMsg = "❌ Uso: add \"buscar\" \"reemplazo\" o add -regex \"patrón\" \"reemplazo\""
+			m.statusMsg = "❌ Usage: add \"search\" \"replacement\" or add -regex \"pattern\" \"replacement\""
 			return nil
 		}
 		if args[1] == "-regex" && len(args) >= 4 {
 			AddRuleEx(args[2], args[3], true, true)
 			m.engine.UpdateRules(GetEnabledRules())
-			m.statusMsg = fmt.Sprintf("✅ Regla regex añadida: %s → %s", args[2], args[3])
+			m.statusMsg = fmt.Sprintf("✅ Regex rule added: %s → %s", args[2], args[3])
 		} else {
 			AddRule(args[1], args[2])
 			m.engine.UpdateRules(GetEnabledRules())
-			m.statusMsg = fmt.Sprintf("✅ Regla añadida: %s → %s", args[1], args[2])
+			m.statusMsg = fmt.Sprintf("✅ Rule added: %s → %s", args[1], args[2])
 		}
 		m.refreshRuleKeys()
 
 	case "del", "delete":
 		if len(args) < 2 {
-			m.statusMsg = "❌ Uso: del \"buscar\""
+			m.statusMsg = "❌ Usage: del \"search\""
 			return nil
 		}
 		RemoveRule(args[1])
 		m.engine.UpdateRules(GetEnabledRules())
-		m.statusMsg = fmt.Sprintf("🗑️ Regla eliminada: %s", args[1])
+		m.statusMsg = fmt.Sprintf("🗑️ Rule deleted: %s", args[1])
 		m.refreshRuleKeys()
 
 	case "enable":
 		if len(args) < 2 {
-			m.statusMsg = "❌ Uso: enable \"buscar\""
+			m.statusMsg = "❌ Usage: enable \"search\""
 			return nil
 		}
 		SetRuleEnabled(args[1], true)
 		m.engine.UpdateRules(GetEnabledRules())
-		m.statusMsg = fmt.Sprintf("🟢 Regla habilitada: %s", args[1])
+		m.statusMsg = fmt.Sprintf("🟢 Rule enabled: %s", args[1])
 
 	case "disable":
 		if len(args) < 2 {
-			m.statusMsg = "❌ Uso: disable \"buscar\""
+			m.statusMsg = "❌ Usage: disable \"search\""
 			return nil
 		}
 		SetRuleEnabled(args[1], false)
 		m.engine.UpdateRules(GetEnabledRules())
-		m.statusMsg = fmt.Sprintf("🔴 Regla deshabilitada: %s", args[1])
+		m.statusMsg = fmt.Sprintf("🔴 Rule disabled: %s", args[1])
 
 	case "toggle":
 		if len(args) < 2 {
-			m.statusMsg = "❌ Uso: toggle \"buscar\""
+			m.statusMsg = "❌ Usage: toggle \"search\""
 			return nil
 		}
 		enabled := ToggleRule(args[1])
 		m.engine.UpdateRules(GetEnabledRules())
 		if enabled {
-			m.statusMsg = fmt.Sprintf("🟢 Regla habilitada: %s", args[1])
+			m.statusMsg = fmt.Sprintf("🟢 Rule enabled: %s", args[1])
 		} else {
-			m.statusMsg = fmt.Sprintf("🔴 Regla deshabilitada: %s", args[1])
+			m.statusMsg = fmt.Sprintf("🔴 Rule disabled: %s", args[1])
 		}
 
 	case "pause":
@@ -508,7 +476,7 @@ func (m *model) processInput() tea.Cmd {
 		if err != nil {
 			m.statusMsg = fmt.Sprintf("❌ Error: %v", err)
 		} else {
-			m.statusMsg = fmt.Sprintf("✅ Escaneado: %s → %s (%d reemplazos)",
+			m.statusMsg = fmt.Sprintf("✅ Scanned: %s → %s (%d replacements)",
 				result.OriginalPath, result.OutputPath, result.ReplacedCount)
 		}
 
@@ -520,19 +488,19 @@ func (m *model) processInput() tea.Cmd {
 		if err := ExportRules(path); err != nil {
 			m.statusMsg = fmt.Sprintf("❌ Error: %v", err)
 		} else {
-			m.statusMsg = fmt.Sprintf("✅ Exportado: %s", path)
+			m.statusMsg = fmt.Sprintf("✅ Exported: %s", path)
 		}
 
 	case "import":
 		if len(args) < 2 {
-			m.statusMsg = "❌ Uso: import ruta/archivo.json"
+			m.statusMsg = "❌ Usage: import path/to/file.json"
 			return nil
 		}
 		if err := ImportRules(args[1]); err != nil {
 			m.statusMsg = fmt.Sprintf("❌ Error: %v", err)
 		} else {
 			m.engine.UpdateRules(GetEnabledRules())
-			m.statusMsg = fmt.Sprintf("✅ Importado: %s", args[1])
+			m.statusMsg = fmt.Sprintf("✅ Imported: %s", args[1])
 			m.refreshRuleKeys()
 		}
 
@@ -541,20 +509,20 @@ func (m *model) processInput() tea.Cmd {
 			m.desktopNotif.Enabled = !m.desktopNotif.Enabled
 			m.desktopNotifs = m.desktopNotif.Enabled
 			if m.desktopNotif.Enabled {
-				m.statusMsg = "🔔 Notificaciones de escritorio ACTIVADAS"
+				m.statusMsg = "🔔 Desktop notifications ACTIVATED"
 			} else {
-				m.statusMsg = "🔕 Notificaciones de escritorio DESACTIVADAS"
+				m.statusMsg = "🔕 Desktop notifications DEACTIVATED"
 			}
 		} else {
-			m.statusMsg = "❌ Notificaciones de escritorio no disponibles"
+			m.statusMsg = "❌ Desktop notifications not available"
 		}
 
 	case "clear":
 		m.history.Clear()
-		m.statusMsg = "🧹 Historial limpiado"
+		m.statusMsg = "🧹 History cleared"
 
 	case "help":
-		m.statusMsg = "Comandos: add, del, enable, disable, toggle, pause, resume, dryrun, notify, clear, scan, export, import, help, quit"
+		m.statusMsg = "Commands: add, del, enable, disable, toggle, pause, resume, dryrun, notify, clear, scan, export, import, help, quit"
 
 	case "quit", "exit":
 		m.quitting = true
@@ -562,7 +530,7 @@ func (m *model) processInput() tea.Cmd {
 		return tea.Quit
 
 	default:
-		m.statusMsg = fmt.Sprintf("❓ Comando desconocido: %s", args[0])
+		m.statusMsg = fmt.Sprintf("❓ Command not found: %s", args[0])
 	}
 
 	return nil
@@ -587,18 +555,18 @@ func ExportRules(path string) error {
 func ImportRules(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("error al leer archivo: %w", err)
+		return fmt.Errorf("error reading file: %w", err)
 	}
 
 	var imported struct {
 		Rules map[string]Rule `json:"rules"`
 	}
 	if err := json.Unmarshal(b, &imported); err != nil {
-		return fmt.Errorf("error al parsear: %w", err)
+		return fmt.Errorf("error parsing file: %w", err)
 	}
 
 	if imported.Rules == nil {
-		return fmt.Errorf("el archivo no contiene reglas válidas")
+		return fmt.Errorf("the file does not contain valid rules")
 	}
 
 	c := GetConfig()
