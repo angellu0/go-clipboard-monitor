@@ -99,7 +99,7 @@ func (m model) paletteView() string {
 }
 
 func (m model) bannerView() string {
-	data, err := os.ReadFile("assets/banner.txt")
+	data, err := os.ReadFile("config/banner.txt")
 	banner := ""
 	if err == nil {
 		banner = strings.TrimRight(string(data), "\n")

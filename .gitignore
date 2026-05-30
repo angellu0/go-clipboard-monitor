@@ -9,4 +9,3 @@ scripts/*
 zz_generated.*
 *~
 *.log
-replacements.json

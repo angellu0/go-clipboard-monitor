@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-const configPath = "replacements.json"
+const configPath = "config/replacements.json"
 
 type Rule struct {
 	Replace string `json:"replace"`
