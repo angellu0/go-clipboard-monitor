@@ -1,13 +1,9 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"go-clipboard-monitor/internal"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -21,18 +17,6 @@ func main() {
 		return
 	}
 	defer internal.ReleaseLock()
-
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-
-	go func() {
-		<-sigs
-		fmt.Println("\n🛑 Cerrando Clipboard Monitor...")
-		cancel()
-	}()
 
 	rules := internal.GetEnabledRules()
 	engine := internal.NewEngine(rules)
@@ -48,10 +32,7 @@ func main() {
 	history := internal.NewHistory(100)
 
 	monitor := internal.NewMonitor(engine, metrics, notifier, false)
-
 	go monitor.Run()
-
-	time.Sleep(200 * time.Millisecond)
 
 	tui := internal.NewTUI(monitor, metrics, engine, history, desktopNotif)
 

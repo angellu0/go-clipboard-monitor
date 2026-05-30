@@ -39,7 +39,7 @@ var paletteCommands = []paletteCmd{
 	{"export", "Export rules", "export [file]"},
 	{"import", "Import rules", `import "file"`},
 	{"help", "Show help", "help"},
-	{"quit", "Exit", "quit"},
+	{"exit", "Exit", "exit"},
 }
 
 type model struct {
@@ -524,7 +524,7 @@ func (m *model) processInput() tea.Cmd {
 	case "help":
 		m.statusMsg = "Commands: add, del, enable, disable, toggle, pause, resume, dryrun, notify, clear, scan, export, import, help, quit"
 
-	case "quit", "exit":
+	case "exit":
 		m.quitting = true
 		m.monitor.Stop()
 		return tea.Quit
