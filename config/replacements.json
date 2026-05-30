@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "Angel Lucero": {
+      "replace": "Developer",
+      "enabled": true
+    }
+  },
+  "profile": "default",
+  "profiles": {
+    "default": {
+      "Angel Lucero": {
+        "replace": "Developer",
+        "enabled": true
+      }
+    }
+  },
+  "detect": {
+    "auto_enabled": false,
+    "patterns": null
+  }
+}
